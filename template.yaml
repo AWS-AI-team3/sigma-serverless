@@ -8,14 +8,29 @@ Parameters:
     Type: String
   Region:
     Type: String
-    Default: ap-northeast-2
+  Vocabulary:
+    Type: String
 
 Resources:
-  RestApi:
-    Type: AWS::Serverless::Api
+  # 레이어
+  TranscribeLayer:
+    Type: AWS::Serverless::LayerVersion
     Properties:
+      LayerName: !Sub "${AWS::StackName}-transcribe-layer"
+      ContentUri: transcribe_layer.zip
+      CompatibleRuntimes:
+        - python3.13
+      CompatibleArchitectures:
+        - x86_64
+
+  # HTTP 게이트웨이
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Name: !Sub "${AWS::StackName}-http-api"
       StageName: !Ref Stage
 
+  # 얼굴 인식
   FaceDetectFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -23,6 +38,8 @@ Resources:
       Handler: face_detect_handler.main
       Runtime: python3.13
       Timeout: 30
+      Architectures:
+        - x86_64
       Environment:
         Variables:
           STAGE: !Ref Stage
@@ -30,15 +47,18 @@ Resources:
           REGION: !Ref Region
       Policies:
         - Statement:
+            # Rekognition
             - Effect: Allow
               Action:
                 - rekognition:DetectFaces
               Resource: "*"
+            # S3
             - Effect: Allow
               Action:
                 - s3:GetObject
                 - s3:HeadObject
               Resource: !Sub "arn:aws:s3:::${UserFaceBucket}/*"
+            # CloudWatch
             - Effect: Allow
               Action:
                 - logs:CreateLogGroup
@@ -47,12 +67,13 @@ Resources:
               Resource: "*"
       Events:
         FaceDetectApi:
-          Type: Api
+          Type: HttpApi
           Properties:
-            RestApiId: !Ref RestApi
+            ApiId: !Ref HttpApi
             Path: /face/detect
             Method: post
 
+  # 얼굴 비교
   FaceCompareFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -60,6 +81,8 @@ Resources:
       Handler: face_compare_handler.main
       Runtime: python3.13
       Timeout: 30
+      Architectures:
+        - x86_64
       Environment:
         Variables:
           STAGE: !Ref Stage
@@ -67,14 +90,17 @@ Resources:
           REGION: !Ref Region
       Policies:
         - Statement:
+            # Rekognition
             - Effect: Allow
               Action:
                 - rekognition:CompareFaces
               Resource: "*"
+            # S3
             - Effect: Allow
               Action:
                 - s3:GetObject
               Resource: !Sub "arn:aws:s3:::${UserFaceBucket}/*"
+            # CloudWatch
             - Effect: Allow
               Action:
                 - logs:CreateLogGroup
@@ -83,90 +109,128 @@ Resources:
               Resource: "*"
       Events:
         FaceCompareApi:
-          Type: Api
+          Type: HttpApi
           Properties:
-            RestApiId: !Ref RestApi
+            ApiId: !Ref HttpApi
             Path: /face/compare
             Method: post
 
-# WebSocket API (commented out for now)
-# WebSocketApi:
-#   Type: AWS::ApiGatewayV2::Api
-#   Properties:
-#     Name: !Sub "${AWS::StackName}-websocket"
-#     ProtocolType: WEBSOCKET
-#     RouteSelectionExpression: "$request.body.action"
+  # WebSocket 게이트웨이
+  WebSocketApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub "${AWS::StackName}-websocket"
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: "$request.body.action"
 
-# WebSocketStage:
-#   Type: AWS::ApiGatewayV2::Stage
-#   Properties:
-#     ApiId: !Ref WebSocketApi
-#     StageName: !Ref Stage
-#     AutoDeploy: true
+  # 스테이지
+  WebSocketStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref WebSocketApi
+      StageName: !Ref Stage
+      AutoDeploy: true
 
-# RequestFunction:
-#   Type: AWS::Serverless::Function
-#   Properties:
-#     CodeUri: src/websocket/
-#     Handler: reqeust_handler.main
-#     Runtime: python3.13
-#     Timeout: 900
-#     Environment:
-#       Variables:
-#         STAGE: !Ref Stage
-#         USER_FACE_BUCKET: !Ref UserFaceBucket
-#         REGION: !Ref Region
-#     Policies:
-#       - Statement:
-#           - Effect: Allow
-#             Action:
-#               - bedrock:InvokeModel
-#             Resource:
-#               - "arn:aws:bedrock:*:*:foundation-model/*"
-#               - "arn:aws:bedrock:*:*:inference-profile/*"
-#           - Effect: Allow
-#             Action:
-#               - execute-api:ManageConnections
-#             Resource: "arn:aws:execute-api:*:*:*/*/POST/@connections/*"
-#           - Effect: Allow
-#             Action:
-#               - logs:CreateLogGroup
-#               - logs:CreateLogStream
-#               - logs:PutLogEvents
-#             Resource: "*"
+  # 라우트
+  TranscribeRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: transcribe
+      Target: !Join
+        - "/"
+        - - "integrations"
+          - !Ref TranscribeIntegration
 
-# TranscribeFunction:
-#   Type: AWS::Serverless::Function
-#   Properties:
-#     CodeUri: src/websocket/
-#     Handler: transcribe_handler.main
-#     Runtime: python3.13
-#     Timeout: 900
-#     Environment:
-#       Variables:
-#         STAGE: !Ref Stage
-#         USER_FACE_BUCKET: !Ref UserFaceBucket
-#         REGION: !Ref Region
-#     Policies:
-#       - Statement:
-#           - Effect: Allow
-#             Action:
-#               - transcribe:StartStreamTranscription
-#               - transcribe:StartStreamTranscriptionWebSocket
-#             Resource: "*"
-#           - Effect: Allow
-#             Action:
-#               - execute-api:ManageConnections
-#             Resource: !Sub "arn:aws:execute-api:${AWS::Region}:*:*/*/POST/@connections/*"
-#           - Effect: Allow
-#             Action:
-#               - logs:CreateLogGroup
-#               - logs:CreateLogStream
-#               - logs:PutLogEvents
-#             Resource: "*"
+  # 통합
+  TranscribeIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${TranscribeFunction.Arn}/invocations"
+
+  # 권한
+  TranscribePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref TranscribeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*/*"
+
+  TranscribeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/websocket/
+      Handler: transcribe_handler.main
+      Runtime: python3.13
+      Timeout: 900
+      MemorySize: 1024
+      Architectures:
+        - x86_64
+      Layers:
+        - !Ref TranscribeLayer
+      Environment:
+        Variables:
+          STAGE: !Ref Stage
+          USER_FACE_BUCKET: !Ref UserFaceBucket
+          REGION: !Ref Region
+          VOCABULARY: !Ref Vocabulary
+      Policies:
+        - Statement:
+            # Transcribe
+            - Effect: Allow
+              Action:
+                - transcribe:StartStreamTranscription
+                - transcribe:StartStreamTranscriptionWebSocket
+              Resource: "*"
+            # WebSocket API
+            - Effect: Allow
+              Action:
+                - execute-api:ManageConnections
+              Resource: !Sub "arn:aws:execute-api:${AWS::Region}:*:*/*/POST/@connections/*"
+            # CloudWatch
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: "*"
+
+  # RequestFunction:
+  #   Type: AWS::Serverless::Function
+  #   Properties:
+  #     CodeUri: src/websocket/
+  #     Handler: reqeust_handler.main
+  #     Runtime: python3.13
+  #     Timeout: 900
+  #     Environment:
+  #       Variables:
+  #         STAGE: !Ref Stage
+  #         USER_FACE_BUCKET: !Ref UserFaceBucket
+  #         REGION: !Ref Region
+  #     Policies:
+  #       - Statement:
+  #           - Effect: Allow
+  #             Action:
+  #               - bedrock:InvokeModel
+  #             Resource:
+  #               - "arn:aws:bedrock:*:*:foundation-model/*"
+  #               - "arn:aws:bedrock:*:*:inference-profile/*"
+  #           - Effect: Allow
+  #             Action:
+  #               - execute-api:ManageConnections
+  #             Resource: "arn:aws:execute-api:*:*:*/*/POST/@connections/*"
+  #           - Effect: Allow
+  #             Action:
+  #               - logs:CreateLogGroup
+  #               - logs:CreateLogStream
+  #               - logs:PutLogEvents
+  #             Resource: "*"
 
 Outputs:
-  RestApiUrl:
-    Value: !Sub "https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}/"
-  # WebSocketUrl:
-  #   Value: !Sub "wss://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}/"
+  HttpApiUrl:
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}/"
+  WebSocketUrl:
+    Value: !Sub "wss://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}/"
