@@ -65,22 +65,18 @@ def verify_images_exist(key1, key2):
     try:
         s3.head_object(Bucket=bucket, Key=key1)
     except ClientError as e:
-        if e.response['Error']['Code'] == '404':
+        if e.response['Error']['Code'] == '403':
             raise FileNotFoundError(f"첫 번째 이미지를 찾을 수 없습니다: {key1}")
         else:
             raise RuntimeError(f"첫 번째 이미지 S3 접근 오류: {str(e)}")
-    except Exception as e:
-        raise RuntimeError(f"첫 번째 이미지 S3 접근 오류: {str(e)}")
 
     try:
         s3.head_object(Bucket=bucket, Key=key2)
     except ClientError as e:
-        if e.response['Error']['Code'] == '404':
+        if e.response['Error']['Code'] == '403':
             raise FileNotFoundError(f"두 번째 이미지를 찾을 수 없습니다: {key2}")
         else:
             raise RuntimeError(f"두 번째 이미지 S3 접근 오류: {str(e)}")
-    except Exception as e:
-        raise RuntimeError(f"두 번째 이미지 S3 접근 오류: {str(e)}")
 
 
 def compare_faces(key1, key2):

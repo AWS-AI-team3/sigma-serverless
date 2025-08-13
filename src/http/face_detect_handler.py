@@ -60,12 +60,10 @@ def verify_image_exists(key):
     try:
         s3.head_object(Bucket=bucket, Key=key)
     except ClientError as e:
-        if e.response['Error']['Code'] == '404':
+        if e.response['Error']['Code'] == '403':
             raise FileNotFoundError(f"이미지를 찾을 수 없습니다 (bucket: {bucket}, key: {key})")
         else:
             raise RuntimeError(f"S3 접근 오류: {str(e)}")
-    except Exception as e:
-        raise RuntimeError(f"S3 접근 오류: {str(e)}")
 
 
 def detect_faces(key):
