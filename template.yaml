@@ -42,7 +42,6 @@ Resources:
         - x86_64
       Environment:
         Variables:
-          STAGE: !Ref Stage
           USER_FACE_BUCKET: !Ref UserFaceBucket
           REGION: !Ref Region
       Policies:
@@ -85,7 +84,6 @@ Resources:
         - x86_64
       Environment:
         Variables:
-          STAGE: !Ref Stage
           USER_FACE_BUCKET: !Ref UserFaceBucket
           REGION: !Ref Region
       Policies:
@@ -142,6 +140,16 @@ Resources:
         - - "integrations"
           - !Ref TranscribeIntegration
 
+  RequestRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: request
+      Target: !Join
+        - "/"
+        - - "integrations"
+          - !Ref RequestIntegration
+
   # 통합
   TranscribeIntegration:
     Type: AWS::ApiGatewayV2::Integration
@@ -150,12 +158,27 @@ Resources:
       IntegrationType: AWS_PROXY
       IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${TranscribeFunction.Arn}/invocations"
 
+  RequestIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RequestFunction.Arn}/invocations"
+
   # 권한
   TranscribePermission:
     Type: AWS::Lambda::Permission
     Properties:
       Action: lambda:InvokeFunction
       FunctionName: !Ref TranscribeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*/*"
+
+  RequestPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref RequestFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*/*"
 
@@ -173,8 +196,6 @@ Resources:
         - !Ref TranscribeLayer
       Environment:
         Variables:
-          STAGE: !Ref Stage
-          USER_FACE_BUCKET: !Ref UserFaceBucket
           REGION: !Ref Region
           VOCABULARY: !Ref Vocabulary
       Policies:
@@ -198,36 +219,40 @@ Resources:
                 - logs:PutLogEvents
               Resource: "*"
 
-  # RequestFunction:
-  #   Type: AWS::Serverless::Function
-  #   Properties:
-  #     CodeUri: src/websocket/
-  #     Handler: reqeust_handler.main
-  #     Runtime: python3.13
-  #     Timeout: 900
-  #     Environment:
-  #       Variables:
-  #         STAGE: !Ref Stage
-  #         USER_FACE_BUCKET: !Ref UserFaceBucket
-  #         REGION: !Ref Region
-  #     Policies:
-  #       - Statement:
-  #           - Effect: Allow
-  #             Action:
-  #               - bedrock:InvokeModel
-  #             Resource:
-  #               - "arn:aws:bedrock:*:*:foundation-model/*"
-  #               - "arn:aws:bedrock:*:*:inference-profile/*"
-  #           - Effect: Allow
-  #             Action:
-  #               - execute-api:ManageConnections
-  #             Resource: "arn:aws:execute-api:*:*:*/*/POST/@connections/*"
-  #           - Effect: Allow
-  #             Action:
-  #               - logs:CreateLogGroup
-  #               - logs:CreateLogStream
-  #               - logs:PutLogEvents
-  #             Resource: "*"
+  RequestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/websocket/
+      Handler: request_handler.main
+      Runtime: python3.13
+      Timeout: 900
+      MemorySize: 1024
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          REGION: !Ref Region
+      Policies:
+        - Statement:
+            # Bedrock
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource:
+                - "arn:aws:bedrock:*:*:foundation-model/*"
+                - "arn:aws:bedrock:*:*:inference-profile/*"
+            # WebSocket API
+            - Effect: Allow
+              Action:
+                - execute-api:ManageConnections
+              Resource: "arn:aws:execute-api:*:*:*/*/POST/@connections/*"
+            # CloudWatch
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: "*"
 
 Outputs:
   HttpApiUrl:
