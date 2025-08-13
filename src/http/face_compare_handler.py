@@ -7,8 +7,8 @@ from utils import respond
 ALLOWED_EXTENSIONS = ['.jpg', '.jpeg']
 SIMILARITY_THRESHOLD = 80.0
 
-region = os.environ.get('REGION', 'ap-northeast-2')
-bucket = os.environ.get('USER_FACE_BUCKET', 'user-faces-x7k9m2p5')
+region = os.environ.get('REGION')
+bucket = os.environ.get('USER_FACE_BUCKET')
 
 rekognition = boto3.client('rekognition', region_name=region)
 s3 = boto3.client('s3', region_name=region)

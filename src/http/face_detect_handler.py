@@ -6,8 +6,8 @@ from utils import respond
 
 ALLOWED_EXTENSIONS = ['.jpg', '.jpeg']
 
-region = os.environ.get('REGION', 'ap-northeast-2')
-bucket = os.environ.get('USER_FACE_BUCKET', 'user-faces-x7k9m2p5')
+region = os.environ.get('REGION')
+bucket = os.environ.get('USER_FACE_BUCKET')
 
 rekognition = boto3.client('rekognition', region_name=region)
 s3 = boto3.client('s3', region_name=region)
@@ -56,8 +56,7 @@ def validate_extension(key):
 
 def verify_image_exists(key):
     from botocore.exceptions import ClientError
-    
-    
+
     try:
         s3.head_object(Bucket=bucket, Key=key)
     except ClientError as e:
