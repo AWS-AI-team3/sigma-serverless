@@ -8,7 +8,7 @@ rekognition = boto3.client('rekognition', region_name=settings.REGION)
 s3 = boto3.client('s3', region_name=settings.REGION)
 
 
-def main(event, context):
+def main(event, _):
     try:
         key = utils.extract_key(event)
         utils.validate_key(key)
@@ -30,10 +30,7 @@ def main(event, context):
 
 
 def detect_faces(key):
-    response = rekognition.detect_faces(
-        Image={'S3Object': {'Bucket': settings.BUCKET, 'Name': key}},
-        Attributes=['DEFAULT'],
-    )
+    response = rekognition.detect_faces(Image={'S3Object': {'Bucket': settings.BUCKET, 'Name': key}}, Attributes=['DEFAULT'])
 
     face_count = len(response['FaceDetails'])
     is_face = face_count > 0

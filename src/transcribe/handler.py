@@ -57,29 +57,15 @@ class TranscriptHandler(TranscriptResultStreamHandler):
                         ]
                         confidence = sum(confs) / len(confs) if confs else 0
 
-                    data = {
-                        'text': text,
-                        'is_partial': result.is_partial,
-                        'confidence': (round(confidence, 2) if confidence > 0 else None),
-                    }
+                    data = {'text': text, 'is_partial': result.is_partial, 'confidence': (round(confidence, 2) if confidence > 0 else None)}
 
-                    utils.send(
-                        self.connection_id,
-                        settings.TYPE_TRANSCRIPT,
-                        self.event,
-                        data=data,
-                    )
+                    utils.send(self.connection_id, settings.TYPE_TRANSCRIPT, self.event, data=data)
 
         except Exception as e:
-            utils.send(
-                self.connection_id,
-                settings.TYPE_ERROR,
-                self.event,
-                data={'message': f'Recognition error: {str(e)}'},
-            )
+            utils.send(self.connection_id, settings.TYPE_ERROR, self.event, data={'message': f'Recognition error: {str(e)}'})
 
 
-def main(event, context):
+def main(event, _):
     try:
         connection_id = utils.extract_connection_id(event)
         message = utils.extract_message(event)
@@ -192,12 +178,7 @@ async def transcribe_stream(connection_id, event):
         await asyncio.gather(send_audio(), receive_transcripts())
 
     except Exception as e:
-        utils.send(
-            connection_id,
-            settings.TYPE_ERROR,
-            event,
-            data={'message': f'Recognition error: {str(e)}'},
-        )
+        utils.send(connection_id, settings.TYPE_ERROR, event, data={'message': f'Recognition error: {str(e)}'})
     finally:
         cleanup_connection(connection_id)
 

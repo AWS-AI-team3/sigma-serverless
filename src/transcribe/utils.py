@@ -10,10 +10,7 @@ def send(connection_id, type, event, data=None):
     message = {'type': type}
     if data:
         message.update(data)
-    client.post_to_connection(
-        ConnectionId=connection_id,
-        Data=json.dumps(message, ensure_ascii=False).encode('utf-8'),
-    )
+    client.post_to_connection(ConnectionId=connection_id, Data=json.dumps(message, ensure_ascii=False).encode('utf-8'))
 
 
 def extract_connection_id(event):

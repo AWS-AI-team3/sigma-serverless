@@ -8,7 +8,7 @@ rekognition = boto3.client('rekognition', region_name=settings.REGION)
 s3 = boto3.client('s3', region_name=settings.REGION)
 
 
-def main(event, context):
+def main(event, _):
     try:
         key1, key2 = utils.extract_keys(event)
         utils.validate_keys(key1, key2)
