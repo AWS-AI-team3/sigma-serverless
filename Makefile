@@ -1,4 +1,10 @@
-.PHONY: deploy dev test
+.PHONY: deploy dev test freeze
+
+install:
+	pip install -r src/requirements.txt
+
+freeze:
+	pip freeze > src/requirements.txt
 
 deploy:
 	sam build && sam deploy
