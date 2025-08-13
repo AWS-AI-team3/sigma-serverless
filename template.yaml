@@ -31,11 +31,11 @@ Resources:
       StageName: !Ref Stage
 
   # 얼굴 인식
-  FaceDetectFunction:
+  DetectFaceFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: src/http/
-      Handler: face_detect_handler.main
+      CodeUri: src/detect_face/
+      Handler: handler.main
       Runtime: python3.13
       Timeout: 30
       Architectures:
@@ -65,7 +65,7 @@ Resources:
                 - logs:PutLogEvents
               Resource: "*"
       Events:
-        FaceDetectApi:
+        DetectFaceApi:
           Type: HttpApi
           Properties:
             ApiId: !Ref HttpApi
@@ -73,11 +73,11 @@ Resources:
             Method: post
 
   # 얼굴 비교
-  FaceCompareFunction:
+  CompareFaceFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: src/http/
-      Handler: face_compare_handler.main
+      CodeUri: src/compare_face/
+      Handler: handler.main
       Runtime: python3.13
       Timeout: 30
       Architectures:
@@ -106,7 +106,7 @@ Resources:
                 - logs:PutLogEvents
               Resource: "*"
       Events:
-        FaceCompareApi:
+        CompareFaceApi:
           Type: HttpApi
           Properties:
             ApiId: !Ref HttpApi
@@ -140,15 +140,15 @@ Resources:
         - - "integrations"
           - !Ref TranscribeIntegration
 
-  RequestRoute:
+  CommandifyRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
       ApiId: !Ref WebSocketApi
-      RouteKey: request
+      RouteKey: commandify
       Target: !Join
         - "/"
         - - "integrations"
-          - !Ref RequestIntegration
+          - !Ref CommandifyIntegration
 
   # 통합
   TranscribeIntegration:
@@ -158,12 +158,12 @@ Resources:
       IntegrationType: AWS_PROXY
       IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${TranscribeFunction.Arn}/invocations"
 
-  RequestIntegration:
+  CommandifyIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
       ApiId: !Ref WebSocketApi
       IntegrationType: AWS_PROXY
-      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RequestFunction.Arn}/invocations"
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CommandifyFunction.Arn}/invocations"
 
   # 권한
   TranscribePermission:
@@ -174,19 +174,19 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*/*"
 
-  RequestPermission:
+  CommandifyPermission:
     Type: AWS::Lambda::Permission
     Properties:
       Action: lambda:InvokeFunction
-      FunctionName: !Ref RequestFunction
+      FunctionName: !Ref CommandifyFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*/*"
 
   TranscribeFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: src/websocket/
-      Handler: transcribe_handler.main
+      CodeUri: src/transcribe/
+      Handler: handler.main
       Runtime: python3.13
       Timeout: 900
       MemorySize: 1024
@@ -219,11 +219,11 @@ Resources:
                 - logs:PutLogEvents
               Resource: "*"
 
-  RequestFunction:
+  CommandifyFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: src/websocket/
-      Handler: request_handler.main
+      CodeUri: src/commandify/
+      Handler: handler.main
       Runtime: python3.13
       Timeout: 900
       MemorySize: 1024
