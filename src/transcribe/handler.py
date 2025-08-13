@@ -1,32 +1,16 @@
-import json
 import base64
 import asyncio
 import threading
-import os
 from io import BytesIO
 from amazon_transcribe.client import TranscribeStreamingClient
 from amazon_transcribe.handlers import TranscriptResultStreamHandler
 from amazon_transcribe.model import TranscriptEvent
-from utils import send
+
+import utils
+import settings
 
 
-SAMPLE_RATE = 16000
-LANGUAGE = 'ko-KR'
-ENCODING = 'pcm'
-BUFFER_SIZE = 3200
-OVERLAP = 640
-
-TYPE_START_TRANSCRIBE = 'start_transcribe'
-TYPE_SEND_AUDIO = 'send_audio'
-TYPE_STOP_TRANSCRIBE = 'stop_transcribe'
-TYPE_TRANSCRIBE_STARTED = 'transcribe_started'
-TYPE_TRANSCRIBE_STOPPED = 'transcribe_stopped'
-TYPE_TRANSCRIPT = 'transcript'
-TYPE_ERROR = 'error'
-
-region = os.environ.get('REGION')
-vocabulary = os.environ.get('VOCABULARY')
-transcribe_client = TranscribeStreamingClient(region=region)
+transcribe_client = TranscribeStreamingClient(region=settings.REGION)
 
 connections = {}
 
@@ -51,7 +35,7 @@ class TranscriptHandler(TranscriptResultStreamHandler):
             for result in results:
                 if result.alternatives:
                     raw = result.alternatives[0].transcript
-                    text = clean_text(raw)
+                    text = utils.clean_text(raw)
 
                     if not text:
                         continue
@@ -73,30 +57,44 @@ class TranscriptHandler(TranscriptResultStreamHandler):
                         ]
                         confidence = sum(confs) / len(confs) if confs else 0
 
-                    data = {'text': text, 'is_partial': result.is_partial, 'confidence': round(confidence, 2) if confidence > 0 else None}
+                    data = {
+                        'text': text,
+                        'is_partial': result.is_partial,
+                        'confidence': (round(confidence, 2) if confidence > 0 else None),
+                    }
 
-                    await send(self.connection_id, TYPE_TRANSCRIPT, data=data, event=self.event)
+                    utils.send(
+                        self.connection_id,
+                        settings.TYPE_TRANSCRIPT,
+                        self.event,
+                        data=data,
+                    )
 
         except Exception as e:
-            await send(self.connection_id, TYPE_ERROR, data={'message': f'Recognition error: {str(e)}'}, event=self.event)
+            utils.send(
+                self.connection_id,
+                settings.TYPE_ERROR,
+                self.event,
+                data={'message': f'Recognition error: {str(e)}'},
+            )
 
 
 def main(event, context):
     try:
-        connection_id = extract_connection_id(event)
-        message = extract_message(event)
-        type = extract_type(message)
+        connection_id = utils.extract_connection_id(event)
+        message = utils.extract_message(event)
+        type = utils.extract_type(message)
 
-        if type == TYPE_START_TRANSCRIBE:
+        if type == settings.TYPE_START_TRANSCRIBE:
             start_transcription(connection_id, event)
-            asyncio.run(send(connection_id, TYPE_TRANSCRIBE_STARTED, data={'message': 'Recognition started'}, event=event))
+            utils.send(connection_id, settings.TYPE_TRANSCRIBE_STARTED, event)
 
-        elif type == TYPE_SEND_AUDIO:
+        elif type == settings.TYPE_SEND_AUDIO:
             process_audio_message(connection_id, message)
 
-        elif type == TYPE_STOP_TRANSCRIBE:
+        elif type == settings.TYPE_STOP_TRANSCRIBE:
             stop_transcription(connection_id)
-            asyncio.run(send(connection_id, TYPE_TRANSCRIBE_STOPPED, data={'message': 'Recognition stopped'}, event=event))
+            utils.send(connection_id, settings.TYPE_TRANSCRIBE_STOPPED, event)
 
         return {"statusCode": 200}
 
@@ -104,24 +102,6 @@ def main(event, context):
         return {"statusCode": 400}
     except Exception as e:
         return {"statusCode": 500}
-
-
-def extract_connection_id(event):
-    return event['requestContext']['connectionId']
-
-
-def extract_message(event):
-    if not event.get('body'):
-        raise ValueError("메시지가 필요합니다")
-    return json.loads(event['body'])
-
-
-def extract_type(message):
-    return message.get('type', '')
-
-
-def clean_text(text):
-    return text.replace('.', '').strip()
 
 
 def process_audio_message(connection_id, message):
@@ -144,13 +124,13 @@ def process_audio_chunk(connection_id, data):
     state = connections[connection_id]
     state.buffer.write(data)
 
-    if state.buffer.tell() >= BUFFER_SIZE:
+    if state.buffer.tell() >= settings.BUFFER_SIZE:
         state.buffer.seek(0)
         chunk = state.buffer.read()
 
         state.buffer = BytesIO()
-        if len(chunk) > OVERLAP:
-            state.buffer.write(chunk[-OVERLAP:])
+        if len(chunk) > settings.OVERLAP:
+            state.buffer.write(chunk[-settings.OVERLAP :])
 
         state.total_chunks += 1
         return chunk
@@ -184,10 +164,10 @@ async def transcribe_stream(connection_id, event):
 
     try:
         stream = await transcribe_client.start_stream_transcription(
-            language_code=LANGUAGE,
-            media_sample_rate_hz=SAMPLE_RATE,
-            media_encoding=ENCODING,
-            vocabulary_name=vocabulary,
+            language_code=settings.LANGUAGE,
+            media_sample_rate_hz=settings.SAMPLE_RATE,
+            media_encoding=settings.ENCODING,
+            vocabulary_name=settings.VOCABULARY,
             enable_partial_results_stabilization=True,
             partial_results_stability="low",
         )
@@ -212,7 +192,12 @@ async def transcribe_stream(connection_id, event):
         await asyncio.gather(send_audio(), receive_transcripts())
 
     except Exception as e:
-        await send(connection_id, TYPE_ERROR, data={'message': f'Recognition error: {str(e)}'}, event=event)
+        utils.send(
+            connection_id,
+            settings.TYPE_ERROR,
+            event,
+            data={'message': f'Recognition error: {str(e)}'},
+        )
     finally:
         cleanup_connection(connection_id)
 
