@@ -1,0 +1,15 @@
+version = 0.1
+
+[default.global.parameters]
+parameter_overrides = [
+    "Stage=dev",
+    "UserFaceBucket=user-faces-x7k9m2p5", 
+    "Region=ap-northeast-2"
+]
+
+[default.deploy.parameters]
+stack_name = "sigma-serverless"
+s3_bucket = "sigma-deploy-bucket"
+region = "ap-northeast-2"
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = false

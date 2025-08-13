@@ -1,0 +1,172 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  Stage:
+    Type: String
+  UserFaceBucket:
+    Type: String
+  Region:
+    Type: String
+    Default: ap-northeast-2
+
+Resources:
+  RestApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref Stage
+
+  FaceDetectFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/http/
+      Handler: face_detect_handler.main
+      Runtime: python3.13
+      Timeout: 30
+      Environment:
+        Variables:
+          STAGE: !Ref Stage
+          USER_FACE_BUCKET: !Ref UserFaceBucket
+          REGION: !Ref Region
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - rekognition:DetectFaces
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:HeadObject
+              Resource: !Sub "arn:aws:s3:::${UserFaceBucket}/*"
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: "*"
+      Events:
+        FaceDetectApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /face/detect
+            Method: post
+
+  FaceCompareFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/http/
+      Handler: face_compare_handler.main
+      Runtime: python3.13
+      Timeout: 30
+      Environment:
+        Variables:
+          STAGE: !Ref Stage
+          USER_FACE_BUCKET: !Ref UserFaceBucket
+          REGION: !Ref Region
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - rekognition:CompareFaces
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+              Resource: !Sub "arn:aws:s3:::${UserFaceBucket}/*"
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: "*"
+      Events:
+        FaceCompareApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /face/compare
+            Method: post
+
+# WebSocket API (commented out for now)
+# WebSocketApi:
+#   Type: AWS::ApiGatewayV2::Api
+#   Properties:
+#     Name: !Sub "${AWS::StackName}-websocket"
+#     ProtocolType: WEBSOCKET
+#     RouteSelectionExpression: "$request.body.action"
+
+# WebSocketStage:
+#   Type: AWS::ApiGatewayV2::Stage
+#   Properties:
+#     ApiId: !Ref WebSocketApi
+#     StageName: !Ref Stage
+#     AutoDeploy: true
+
+# RequestFunction:
+#   Type: AWS::Serverless::Function
+#   Properties:
+#     CodeUri: src/websocket/
+#     Handler: reqeust_handler.main
+#     Runtime: python3.13
+#     Timeout: 900
+#     Environment:
+#       Variables:
+#         STAGE: !Ref Stage
+#         USER_FACE_BUCKET: !Ref UserFaceBucket
+#         REGION: !Ref Region
+#     Policies:
+#       - Statement:
+#           - Effect: Allow
+#             Action:
+#               - bedrock:InvokeModel
+#             Resource:
+#               - "arn:aws:bedrock:*:*:foundation-model/*"
+#               - "arn:aws:bedrock:*:*:inference-profile/*"
+#           - Effect: Allow
+#             Action:
+#               - execute-api:ManageConnections
+#             Resource: "arn:aws:execute-api:*:*:*/*/POST/@connections/*"
+#           - Effect: Allow
+#             Action:
+#               - logs:CreateLogGroup
+#               - logs:CreateLogStream
+#               - logs:PutLogEvents
+#             Resource: "*"
+
+# TranscribeFunction:
+#   Type: AWS::Serverless::Function
+#   Properties:
+#     CodeUri: src/websocket/
+#     Handler: transcribe_handler.main
+#     Runtime: python3.13
+#     Timeout: 900
+#     Environment:
+#       Variables:
+#         STAGE: !Ref Stage
+#         USER_FACE_BUCKET: !Ref UserFaceBucket
+#         REGION: !Ref Region
+#     Policies:
+#       - Statement:
+#           - Effect: Allow
+#             Action:
+#               - transcribe:StartStreamTranscription
+#               - transcribe:StartStreamTranscriptionWebSocket
+#             Resource: "*"
+#           - Effect: Allow
+#             Action:
+#               - execute-api:ManageConnections
+#             Resource: !Sub "arn:aws:execute-api:${AWS::Region}:*:*/*/POST/@connections/*"
+#           - Effect: Allow
+#             Action:
+#               - logs:CreateLogGroup
+#               - logs:CreateLogStream
+#               - logs:PutLogEvents
+#             Resource: "*"
+
+Outputs:
+  RestApiUrl:
+    Value: !Sub "https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}/"
+  # WebSocketUrl:
+  #   Value: !Sub "wss://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}/"
