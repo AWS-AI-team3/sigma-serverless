@@ -11,10 +11,8 @@ s3 = boto3.client('s3', region_name=settings.REGION)
 def main(event, _):
     try:
         key1, key2 = utils.extract_keys(event)
-        utils.validate_keys(key1, key2)
         utils.validate_bucket(settings.BUCKET)
-        utils.validate_extensions(key1, key2, settings.ALLOWED_EXTENSIONS)
-        utils.verify_images_exist(s3, settings.BUCKET, key1, key2)
+        utils.validate_keys(s3, settings.BUCKET, key1, key2)
 
         comparison_data = compare_faces(key1, key2)
         return utils.respond(200, comparison_data)

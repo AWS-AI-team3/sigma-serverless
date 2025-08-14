@@ -11,10 +11,8 @@ s3 = boto3.client('s3', region_name=settings.REGION)
 def main(event, _):
     try:
         key = utils.extract_key(event)
-        utils.validate_key(key)
         utils.validate_bucket(settings.BUCKET)
-        utils.validate_extension(key, settings.ALLOWED_EXTENSIONS)
-        utils.verify_image_exists(s3, settings.BUCKET, key)
+        utils.validate_key(s3, settings.BUCKET, key)
 
         data = detect_faces(key)
         return utils.respond(200, data)
